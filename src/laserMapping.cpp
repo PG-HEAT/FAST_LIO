@@ -631,18 +631,18 @@ void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPt
     odomAftMapped.child_frame_id = "body";
     odomAftMapped.header.stamp = get_ros_time(lidar_end_time);
     set_posestamp(odomAftMapped.pose);
-    pubOdomAftMapped->publish(odomAftMapped);
-    auto P = kf.get_P();
+    // Fill the covariance before publishing, for this scan. ROS order is
+    // (x, y, z, rx, ry, rz), all in camera_init axes. The state starts
+    // (pos, rot); pos is additive in camera_init, but IKFoM perturbs rot on
+    // the right, R * Exp(dtheta) (SO3::boxplus), so its rows are in body axes
+    // and are rotated into camera_init by R.
+    Eigen::Matrix<double, 6, 6> J = Eigen::Matrix<double, 6, 6>::Identity();
+    J.block<3, 3>(3, 3) = state_point.rot.toRotationMatrix();
+    const Eigen::Matrix<double, 6, 6> cov = J * kf.get_P().block<6, 6>(0, 0) * J.transpose();
     for (int i = 0; i < 6; i ++)
-    {
-        int k = i < 3 ? i + 3 : i - 3;
-        odomAftMapped.pose.covariance[i*6 + 0] = P(k, 3);
-        odomAftMapped.pose.covariance[i*6 + 1] = P(k, 4);
-        odomAftMapped.pose.covariance[i*6 + 2] = P(k, 5);
-        odomAftMapped.pose.covariance[i*6 + 3] = P(k, 0);
-        odomAftMapped.pose.covariance[i*6 + 4] = P(k, 1);
-        odomAftMapped.pose.covariance[i*6 + 5] = P(k, 2);
-    }
+        for (int j = 0; j < 6; j ++)
+            odomAftMapped.pose.covariance[i*6 + j] = cov(i, j);
+    pubOdomAftMapped->publish(odomAftMapped);
 
     geometry_msgs::msg::TransformStamped trans;
     trans.header.frame_id = "camera_init";
