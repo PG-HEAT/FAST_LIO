@@ -926,7 +926,11 @@ public:
         {
             sub_pcl_pc_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(lid_topic, rclcpp::SensorDataQoS(), standard_pcl_cbk);
         }
-        sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(imu_topic, 10, imu_cbk);
+        // Depth 1000 (5 s at 200 Hz), not 10: the single-threaded executor blocks for tens of ms
+        // while a scan is processed, so a 10-deep reliable reader overflows. Fast DDS then
+        // delivers only a few samples a second from the far end of the writer's history (the
+        // Livox driver keeps 256, 1.28 s), and every scan waits that long for its IMU data.
+        sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(imu_topic, 1000, imu_cbk);
         pubLaserCloudFull_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_registered", 20);
         pubLaserCloudFull_body_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_registered_body", 20);
         pubLaserCloudEffect_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_effected", 20);
